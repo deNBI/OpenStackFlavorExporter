@@ -11,7 +11,7 @@ class Resources: # pylint: disable=too-many-instance-attributes
     Additional the count of all possible flavor can be calculated.
     """
 
-    def __init__(self, cpu_overprovisioning=4, whitelist=[], blacklist=[]): # pylint: disable=dangerous-default-value
+    def __init__(self, cpu_overprovisioning=4, whitelist=[], blacklist="", aggr_match_opts="", debug=False): # pylint: disable=dangerous-default-value
         """
         Constructor of Resources class.
 
@@ -32,6 +32,8 @@ class Resources: # pylint: disable=too-many-instance-attributes
         self.__cpu_overprovisioning = cpu_overprovisioning
         self.__whitelist = whitelist
         self.__blacklist = blacklist
+        self.__aggr_match_opts = aggr_match_opts
+        self.__debug = debug
 
 
     def __getv(self, _map, _key, default=None):
@@ -58,6 +60,9 @@ class Resources: # pylint: disable=too-many-instance-attributes
 
         result = {}
 
+        if self.__debug:
+            print("aggregate;metadata;hypervisor;running_vms;vcpus;vcpus_used;memory;memory_free;disk;disk_available")
+
         # create a map of hypervisor to make life a bit easier
         for hypervisor in self.__osclient__.list_hypervisors():
             self.__hypervisors__[hypervisor["name"].split('.')[0]] = hypervisor
@@ -78,6 +83,21 @@ class Resources: # pylint: disable=too-many-instance-attributes
 
                 hypervisor = self.__hypervisors__[hostname.split('.')[0]]
 
+                if self.__debug:
+                    print("%s;%s;%s;%d;%d;%d;%d;%d;%d;%d" % (
+                        aggregate['name'],
+                        aggregate['metadata'],
+                        hypervisor['name'],
+                        int(hypervisor['running_vms']),
+                        int(hypervisor["vcpus"]),
+                        int(hypervisor["vcpus_used"]),
+                        int(hypervisor["memory_size"]),
+                        int(hypervisor["memory_free"]),
+                        int(hypervisor["local_disk_size"]),
+                        int(hypervisor["disk_available"])
+                        )
+                    )
+
                 hypervisors.append({"name": hypervisor["name"].split('.')[0],
                                         "status": hypervisor["status"],
                                         "state": hypervisor["state"],
@@ -96,10 +116,12 @@ class Resources: # pylint: disable=too-many-instance-attributes
 
             # add necessary aggregate information to datastructure
             result[aggregate["name"]] = {}
+            result[aggregate["name"]]["name"] = aggregate["name"]
             result[aggregate["name"]]["gpu"] = self.__getv(aggregate["metadata"], 'gpu', False)
             result[aggregate["name"]]["gpu_type"] = self.__getv(aggregate["metadata"], "gpu_type", 'none')
             result[aggregate["name"]]["gpu_count"] = int(self.__getv(aggregate["metadata"], 'gpu_count', 0)) # type: ignore
             result[aggregate["name"]]["hypervisors"] = hypervisors
+            result[aggregate["name"]]["metadata"] = aggregate["metadata"]
 
         self.__map_of_aggregates__ = result
 
@@ -140,10 +162,25 @@ class Resources: # pylint: disable=too-many-instance-attributes
                 if "pci_passthrough:alias" in flavor["extra_specs"].keys():
                     gpu_type, gpu_count = flavor["extra_specs"]["pci_passthrough:alias"].split(":")
                     flavor_type = "gpu"
-
+                elif self.__aggr_match_opts and "aggregate_instance_extra_specs:" + self.__aggr_match_opts in flavor["extra_specs"].keys() and flavor["extra_specs"]["aggregate_instance_extra_specs:" + self.__aggr_match_opts] == "true":
+                    flavor_type = self.__aggr_match_opts
 
                 # iterate over all aggregates
                 for aggegrate in self.__map_of_aggregates__.values():
+
+                    aggegrate_type = "default"
+                    if "gpu" in aggegrate['metadata'] and aggegrate['metadata']['gpu'] == "true":
+                        aggegrate_type = "gpu"
+                    elif self.__aggr_match_opts in aggegrate['metadata'] and aggegrate['metadata'][self.__aggr_match_opts] == "true":
+                        aggegrate_type = self.__aggr_match_opts
+
+                    # skip aggegrate if metadata does not match that of flavor
+                    if aggegrate_type != flavor_type:
+                        if self.__debug:
+                            print ("\nSkipping non-matching: flavor '%s' (props '%s') vs aggr '%s' (props '%s')" % (flavor["name"], flavor_type, aggegrate['name'], aggegrate_type))
+                        continue
+                    elif self.__debug:
+                        print ("\nAdding matching: flavor '%s' (props '%s') vs aggr '%s' (props '%s')" % (flavor["name"], flavor_type, aggegrate['name'], aggegrate_type))
 
                     # iterate over all hypervisor of current aggregate
                     for hypervisor in aggegrate["hypervisors"]:
@@ -181,6 +218,10 @@ class Resources: # pylint: disable=too-many-instance-attributes
                         # add minimum of current available resources
                         available += min(c_gpu, c_vcpu, c_mem, c_disk)
 
+                        toadd = min(c_gpu, c_vcpu, c_mem, c_disk)
+
+                        if self.__debug:
+                            print ("Flavor '%s' at hypervisor '%s' -> disk %d / %d -> %d, cpu %d / %d -> %d, mem %d / %d -> %d, to add %d, avail %d" % (flavor["name"], hypervisor["name"],  hypervisor["disk_available"], local_disk, c_disk, int(hypervisor["vcpus"]) * self.__cpu_overprovisioning, flavor["vcpus"], c_vcpu, int(hypervisor["memory_free"]), int(flavor["ram"]), c_mem, toadd, available))
 
                 # Append flavor
                 flavors.append(ExtendedFlavor(

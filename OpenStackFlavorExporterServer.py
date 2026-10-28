@@ -18,11 +18,14 @@ HANDLER.setFormatter(formatter)
 LOG.addHandler(HANDLER)
 LOG.setLevel(logging.DEBUG)
 
-def update_cache():
+def update_cache(debug=False):
     """
     Helper function. Updates cached data continuously.
     """
-    LOG.info("Start updating cached data continuously.")
+    if debug:
+        LOG.info("Running in DEBUG mode: start updating cached data continuously.")
+    else:
+        LOG.info("Start updating cached data continuously.")
     while True:
         start = datetime.datetime.now()
         OpenStackFlavorExporter.main.update_cache()
@@ -68,6 +71,14 @@ if __name__ == '__main__':
                         help="Comma separated list of flavor names to be blacklisted. A name could be regular expression.",
                         type=str,
                         default="DEPRECATED")
+    PARSER.add_argument("--aggrMatchProp",
+                        help="Aggregate property that must match flavor property for available instances placement calculation, like 'ephemeral'",
+                        type=str,
+                        default="")
+    PARSER.add_argument("--debug",
+                        action="store_true",
+                        help="When set to True, detailed information about calculation of free space for flavors is written to STDOUT.")
+
     ARGS = PARSER.parse_args()
 
     # validate arguments
@@ -76,9 +87,11 @@ if __name__ == '__main__':
     BIND = ARGS.bind.split(":")
     WORKERS = ARGS.workers
     TIMEOUT = ARGS.timeout
+    DEBUG=ARGS.debug
+    AGGRMATCHPROPS=ARGS.aggrMatchProp
 
     # configure memcached
-    OpenStackFlavorExporter.main.configure_memcache(enabled=True,
+    OpenStackFlavorExporter.main.configure_memcache(enabled=(not DEBUG),
                                                   host=MEMCACHEDHOST,
                                                   expire=TIMEOUT,
                                                   prefix=MEMCACHEDPREFIX)
@@ -91,7 +104,9 @@ if __name__ == '__main__':
         LOG.info("Using flavor blacklist: %s", BLACKLIST)
     OpenStackFlavorExporter.main.configure(cpu_overprovisioning=ARGS.overprovisioning,
                                           whitelist=WHITELIST,
-                                          blacklist=BLACKLIST)
+                                          blacklist=BLACKLIST,
+                                          aggr_match_opts=AGGRMATCHPROPS,
+                                          debug=DEBUG)
 
     # run uvicorn in a separate child process
     if os.fork() == 0:
@@ -107,4 +122,4 @@ if __name__ == '__main__':
         server.run()
     else:
         # parent
-        update_cache()
+        update_cache(DEBUG)

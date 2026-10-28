@@ -15,6 +15,10 @@ CPU_OVERPROVISIONING = 4
 FLAVOR_WHITELIST = []
 # set "DEPRECATED" as default blacklist entry
 FLAVOR_BLACKLIST = ["DEPRECATED"]
+# Flavor-to-Aggregate strict matching options
+AGGRMATCHPROPS = ""
+# set debug to false by default
+DEBUG = False
 
 def configure_memcache(enabled=True, host="127.0.0.1:11211", expire=300, prefix=""):
     """
@@ -32,7 +36,7 @@ def configure_memcache(enabled=True, host="127.0.0.1:11211", expire=300, prefix=
     MEMCACHEDCLIENT = MemCachedClient(MEMCACHEDHOST, serde=serde.pickle_serde)
     MEMCACHEDPREFIX = prefix
 
-def configure(cpu_overprovisioning=4, whitelist=[], blacklist=[]): # pylint: disable=dangerous-default-value
+def configure(cpu_overprovisioning=4, whitelist=[], blacklist=[], aggr_match_opts="", debug=False): # pylint: disable=dangerous-default-value
     """
     Configure filters for flavors.
     
@@ -40,21 +44,26 @@ def configure(cpu_overprovisioning=4, whitelist=[], blacklist=[]): # pylint: dis
     :param blacklist: list of flavor names to be blacklisted. A name could be regular expression.
     :return: None
     """
-    global CPU_OVERPROVISIONING, FLAVOR_WHITELIST, FLAVOR_BLACKLIST  # pylint: disable=global-statement
+    global CPU_OVERPROVISIONING, FLAVOR_WHITELIST, FLAVOR_BLACKLIST, AGGRMATCHPROPS, DEBUG  # pylint: disable=global-statement
     CPU_OVERPROVISIONING = cpu_overprovisioning
     FLAVOR_WHITELIST = whitelist
     FLAVOR_BLACKLIST = blacklist
+    AGGRMATCHPROPS = aggr_match_opts
+    DEBUG = debug
 
 def update_cache():
     """
     Update memcache, if enabled.
     """
+    global CPU_OVERPROVISIONING, FLAVOR_WHITELIST, FLAVOR_BLACKLIST, AGGRMATCHPROPS, DEBUG # pylint: disable=global-variable-undefined
+
+    resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST,aggr_match_opts=AGGRMATCHPROPS,debug=DEBUG)
+    resources.update()
+    flavors = resources.get_flavors()
+
     if MEMCACHE:
         timestamp = datetime.now()
         # calculate available flavors
-        resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST)
-        resources.update()
-        flavors = resources.get_flavors()
         # and cache them using memcache (if enabled)
         MEMCACHEDCLIENT.set(MEMCACHEDPREFIX+"Flavor", flavors, MEMCACHEEXPIREAFTER)
         MEMCACHEDCLIENT.set(MEMCACHEDPREFIX+"Flavor.timestamp", timestamp.strftime('%Y-%m-%d %H:%M:%S'), MEMCACHEEXPIREAFTER)
@@ -78,7 +87,7 @@ def _get_flavors() -> list[ExtendedFlavor]:
 
     if not flavors:
         # calculate available flavors
-        resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST)
+        resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST,aggr_match_opts=AGGRMATCHPROPS,debug=DEBUG)
         resources.update()
         flavors = resources.get_flavors()
         # and cache them using memcache (if enabled)
