@@ -59,6 +59,7 @@ def update_cache():
 
     resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST,aggr_match_opts=AGGRMATCHPROPS,debug=DEBUG)
 
+
     try:
         resources.update()
         flavors = resources.get_flavors()
@@ -97,7 +98,6 @@ def _get_flavors() -> list[ExtendedFlavor]:
             flavors = resources.get_flavors()
         finally:
             resources.close()
-
         # and cache them using memcache (if enabled)
         if MEMCACHE:
             MEMCACHEDCLIENT.set(MEMCACHEDPREFIX+"Flavor", flavors, MEMCACHEEXPIREAFTER)
