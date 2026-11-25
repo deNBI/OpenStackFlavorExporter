@@ -4,6 +4,7 @@ import sys
 
 import OpenStackFlavorExporter.openstack
 from OpenStackFlavorExporter.model import ExtendedFlavor
+from openstack.proxy import Proxy
 
 class Resources: # pylint: disable=too-many-instance-attributes
     """
@@ -46,7 +47,7 @@ class Resources: # pylint: disable=too-many-instance-attributes
         """
         Helper method. Update map of gpu instances by host.
         """
-        for instance in self.__osclient__.list_servers(all_projects=True):
+        for instance in self.__osclient__.list_servers(all_projects=True, bare=True):
             # Filter all GPU instances
             if "pci_passthrough:alias" in instance["flavor"]["extra_specs"].keys():
                 if instance["OS-EXT-SRV-ATTR:host"] not in self.__gpu_instances_by_host__:
@@ -267,6 +268,11 @@ class Resources: # pylint: disable=too-many-instance-attributes
             if flavor.id == flavorid:
                 return flavor
         raise ResourceException("Unknown flavor id!")
+
+    def close(self):
+        self.__osclient__.close()
+        # Release proxies/connections retained by the SDK method cache.
+        Proxy._extract_name.cache_clear()
 
 
 class ResourceException(Exception):

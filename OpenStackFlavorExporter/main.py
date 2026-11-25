@@ -58,8 +58,13 @@ def update_cache():
     global CPU_OVERPROVISIONING, FLAVOR_WHITELIST, FLAVOR_BLACKLIST, AGGRMATCHPROPS, DEBUG # pylint: disable=global-variable-undefined
 
     resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST,aggr_match_opts=AGGRMATCHPROPS,debug=DEBUG)
-    resources.update()
-    flavors = resources.get_flavors()
+
+
+    try:
+        resources.update()
+        flavors = resources.get_flavors()
+    finally:
+        resources.close()
 
     if MEMCACHE:
         timestamp = datetime.now()
@@ -88,8 +93,11 @@ def _get_flavors() -> list[ExtendedFlavor]:
     if not flavors:
         # calculate available flavors
         resources = Resources(cpu_overprovisioning=CPU_OVERPROVISIONING, whitelist=FLAVOR_WHITELIST,blacklist=FLAVOR_BLACKLIST,aggr_match_opts=AGGRMATCHPROPS,debug=DEBUG)
-        resources.update()
-        flavors = resources.get_flavors()
+        try:
+            resources.update()
+            flavors = resources.get_flavors()
+        finally:
+            resources.close()
         # and cache them using memcache (if enabled)
         if MEMCACHE:
             MEMCACHEDCLIENT.set(MEMCACHEDPREFIX+"Flavor", flavors, MEMCACHEEXPIREAFTER)

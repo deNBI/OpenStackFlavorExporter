@@ -4,6 +4,7 @@ import datetime
 import logging
 import os
 import time
+import gc
 
 import uvicorn
 
@@ -29,6 +30,7 @@ def update_cache(debug=False):
     while True:
         start = datetime.datetime.now()
         OpenStackFlavorExporter.main.update_cache()
+        gc.collect()
         stop = datetime.datetime.now()
         runningtime = (stop-start).seconds
         LOG.info("Updating cached data took %d seconds.", runningtime)
